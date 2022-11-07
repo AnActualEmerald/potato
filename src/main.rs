@@ -1,3 +1,5 @@
+use potato;
+
 fn main() {
-    println!("Hello, world!");
+    potato::run();
 }
