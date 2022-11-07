@@ -122,11 +122,13 @@ impl CPU {
         self.pc += 2;
 
         let nib = (instr & (0xF << 12)) >> 12;
-        let x = (instr & (0xF << 8)) >> 8;
-        let y = (instr & (0xF << 4)) >> 4;
+        let x = ((instr & (0xF << 8)) >> 8) as usize;
+        let y = ((instr & (0xF << 4)) >> 4) as usize;
         let n = instr & (0xF);
-        let nn = instr & (0xFF);
+        let nn = (instr & (0xFF)) as u8;
         let nnn = instr & (0xFFF);
+        let x_val = self.registers[x];
+        let y_val = self.registers[y];
         println!("nib: {:#X}", nib);
         println!("x: {:#X}", x);
         println!("y: {:#X}", y);
@@ -134,6 +136,50 @@ impl CPU {
         println!("nn: {:#X}", nn);
         println!("nnn: {:#X}", nnn);
 
-        // match nib {}
+        match nib {
+            1 => {
+                self.pc = nnn as usize;
+            }
+
+            6 => {
+                self.registers[x] = nn;
+            }
+
+            7 => {
+                let (res, _) = self.registers[x].overflowing_add(nn);
+                self.registers[x] = res;
+            }
+
+            0xA => {
+                self.index = nnn;
+            }
+
+            0xD => {
+                let x_coord = x_val as usize % 64;
+                let mut y_coord = y_val as usize % 32;
+                self.registers[0xF as usize] = 0;
+                for i in 0..n {
+                    if y_coord > 32 {
+                        continue;
+                    }
+                    let data = self.mem[self.index as usize + i as usize];
+                    for x in 0..8 {
+                        if x_coord + x > 64 {
+                            break;
+                        }
+                        let curr = (data & (1 << i)) >> i == 1;
+                        if curr && self.display[y_coord][x_coord + x] {
+                            self.display[y_coord][x_coord + x] = false;
+                            self.registers[0xF as usize] = 1;
+                        } else if curr && !self.display[y_coord][x_coord + x] {
+                            self.display[y_coord][x_coord + x] = true;
+                        }
+                    }
+                    y_coord += 1;
+                }
+            }
+
+            _ => todo!(),
+        }
     }
 }
