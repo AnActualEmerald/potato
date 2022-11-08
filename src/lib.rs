@@ -1,12 +1,13 @@
-use std::{thread::sleep, time::Duration};
-
 mod cpu;
+pub mod display;
 
-pub fn run() {
-    println!("Hello world!");
+pub use cpu::CPU;
+pub use cpu::HEIGHT;
+pub use cpu::WIDTH;
+
+pub fn init(program: &[u8]) -> cpu::CPU {
     let mut c = cpu::CPU::new();
-    for _ in 0..4096 {
-        c.tick();
-        sleep(Duration::from_millis(1000));
-    }
+    c.load_program(program);
+
+    c
 }

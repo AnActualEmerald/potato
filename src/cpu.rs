@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, thread};
 
 const FONT: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -19,6 +19,9 @@ const FONT: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80,
 ]; // F
 
+pub const WIDTH: usize = 64;
+pub const HEIGHT: usize = 32;
+
 #[derive(Debug)]
 pub struct CPU {
     mem: [u8; 4096],
@@ -28,7 +31,7 @@ pub struct CPU {
     registers: [u8; 16],
     delay_timer: u8,
     sound_timer: u8,
-    display: [[bool; 64]; 32],
+    display: [[bool; WIDTH]; HEIGHT],
 }
 
 #[derive(Debug)]
@@ -107,7 +110,7 @@ impl CPU {
             registers: [0u8; 16],
             delay_timer: 0,
             sound_timer: 0,
-            display: [[false; 64]; 32],
+            display: [[false; WIDTH]; HEIGHT],
         }
     }
 
@@ -115,6 +118,7 @@ impl CPU {
         for (i, byte) in program.iter().enumerate() {
             self.mem[i + 0x200] = *byte;
         }
+        self.pc = 0x200;
     }
 
     pub fn tick(&mut self) {
@@ -129,15 +133,22 @@ impl CPU {
         let nnn = instr & (0xFFF);
         let x_val = self.registers[x];
         let y_val = self.registers[y];
-        println!("nib: {:#X}", nib);
-        println!("x: {:#X}", x);
-        println!("y: {:#X}", y);
-        println!("n: {:#X}", n);
-        println!("nn: {:#X}", nn);
-        println!("nnn: {:#X}", nnn);
+        // println!("nib: {:#X}", nib);
+        // println!("x: {:#X}", x);
+        // println!("y: {:#X}", y);
+        // println!("n: {:#X}", n);
+        // println!("nn: {:#X}", nn);
+        // println!("nnn: {:#X}", nnn);
 
         match nib {
+            _ if instr == 0x00E0 => self.display = [[false; WIDTH]; HEIGHT],
+            _ if instr == 0x00EE => self.pc = self.stack.pop() as usize,
             1 => {
+                self.pc = nnn as usize;
+            }
+
+            2 => {
+                self.stack.push(self.pc as u16);
                 self.pc = nnn as usize;
             }
 
@@ -155,31 +166,56 @@ impl CPU {
             }
 
             0xD => {
-                let x_coord = x_val as usize % 64;
-                let mut y_coord = y_val as usize % 32;
+                let x_coord = x_val as usize % WIDTH;
+                let mut y_coord = y_val as usize % HEIGHT;
                 self.registers[0xF as usize] = 0;
                 for i in 0..n {
-                    if y_coord > 32 {
+                    if y_coord > HEIGHT {
                         continue;
                     }
                     let data = self.mem[self.index as usize + i as usize];
-                    for x in 0..8 {
-                        if x_coord + x > 64 {
-                            break;
+                    println!("DATA: {:#x?}", data);
+                    let mut x = x_coord;
+                    for z in (0..8).rev() {
+                        if x > WIDTH {
+                            // break;
                         }
-                        let curr = (data & (1 << i)) >> i == 1;
-                        if curr && self.display[y_coord][x_coord + x] {
-                            self.display[y_coord][x_coord + x] = false;
+                        let curr = (data & (1 << (z))) != 0;
+                        println!("DATA: {:#x?}", data);
+                        println!("x: {} y: {} current: {}", x, y_coord, curr);
+                        if curr && self.display[y_coord][x] {
+                            println!("fizz");
+                            thread::sleep(std::time::Duration::from_millis(1000));
+                            println!("DATA: {:#x?}", data);
+                            println!("x: {} y: {} current: {}", x, y_coord, curr);
+                            self.display[y_coord][x] = false;
                             self.registers[0xF as usize] = 1;
-                        } else if curr && !self.display[y_coord][x_coord + x] {
-                            self.display[y_coord][x_coord + x] = true;
+                        } else if curr && !self.display[y_coord][x] {
+                            println!("buzz");
+                            self.display[y_coord][x] = true;
                         }
+                        x += 1;
                     }
                     y_coord += 1;
                 }
             }
 
             _ => todo!(),
+        }
+    }
+
+    pub fn draw(&self, frame: &mut [u8]) {
+        for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
+            let x = i % WIDTH;
+            let y = i / WIDTH;
+
+            let rgba = if self.display[y][x] {
+                [0xFF, 0x00, 0xFF, 0xFF]
+            } else {
+                [0x00, 0x00, 0x00, 0xFF]
+            };
+
+            pixel.copy_from_slice(&rgba);
         }
     }
 }
