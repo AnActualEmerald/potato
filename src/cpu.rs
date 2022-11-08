@@ -31,6 +31,7 @@ pub struct CPU {
     registers: [u8; 16],
     delay_timer: u8,
     sound_timer: u8,
+    keypad: [bool; 16],
     display: Vec<Vec<bool>>,
 }
 
@@ -114,6 +115,7 @@ impl CPU {
             registers: [0u8; 16],
             delay_timer: 0,
             sound_timer: 0,
+            keypad: [false; 16],
             display: vec![vec![false; width]; height],
         }
     }
@@ -123,6 +125,11 @@ impl CPU {
             self.mem[i + 0x200] = *byte;
         }
         self.pc = 0x200;
+    }
+
+    pub fn timers(&mut self) {
+        self.sound_timer = self.sound_timer.checked_sub(1).unwrap_or_default();
+        self.delay_timer = self.delay_timer.checked_sub(1).unwrap_or_default();
     }
 
     pub fn tick(&mut self) {
@@ -162,6 +169,24 @@ impl CPU {
                 self.pc = nnn as usize;
             }
 
+            3 => {
+                if x_val == nn {
+                    self.pc += 2;
+                }
+            }
+
+            4 => {
+                if x_val != nn {
+                    self.pc += 2;
+                }
+            }
+
+            5 => {
+                if x_val == y_val {
+                    self.pc += 2;
+                }
+            }
+
             6 => {
                 self.registers[x] = nn;
             }
@@ -171,8 +196,83 @@ impl CPU {
                 self.registers[x] = res;
             }
 
+            // arithmetic and logic
+            8 => match n {
+                // set VX to VY
+                0 => {
+                    self.registers[x] = y_val;
+                }
+
+                // set VX to VX OR VY
+                1 => {
+                    self.registers[x] = x_val | y_val;
+                }
+
+                // set VX to VX AND VY
+                2 => {
+                    self.registers[x] = x_val & y_val;
+                }
+
+                // set VX to VX XOR VY
+                3 => {
+                    self.registers[x] = x_val ^ y_val;
+                }
+
+                // set VX to VX + VY, and set VF if it overflows
+                4 => {
+                    let (res, carry) = x_val.overflowing_add(y_val);
+                    self.registers[0xF] = carry.into();
+                    self.registers[x] = res;
+                }
+
+                // set VX to VX - VY, and set VF if it doesn't underflow
+                5 => {
+                    let (res, carry) = x_val.overflowing_sub(y_val);
+                    self.registers[0xF] = (!carry).into();
+                    self.registers[x] = res;
+                }
+
+                // set VX to VY - VX, and set VF if it doesn't underflow
+                7 => {
+                    let (res, carry) = y_val.overflowing_sub(x_val);
+                    self.registers[0xF] = (!carry).into();
+                    self.registers[x] = res;
+                }
+
+                6 => {
+                    //TODO: Optional set VX to VY before shifting
+                    let (res, carry) = x_val.overflowing_shr(1);
+                    self.registers[0xF] = carry.into();
+                    self.registers[x] = res;
+                }
+
+                0xE => {
+                    //TODO: Optional set VX to VY before shifting
+                    let (res, carry) = x_val.overflowing_shl(1);
+                    self.registers[0xF] = carry.into();
+                    self.registers[x] = res;
+                }
+
+                _ => unimplemented!(),
+            },
+
+            9 => {
+                if x_val != y_val {
+                    self.pc += 2;
+                }
+            }
+
             0xA => {
                 self.index = nnn;
+            }
+
+            0xB => {
+                //TODO: BXNN implementation
+                self.pc = (nnn + self.registers[0] as u16) as usize;
+            }
+
+            0xC => {
+                self.registers[x] = rand::random::<u8>() & nn;
             }
 
             0xD => {
@@ -184,24 +284,18 @@ impl CPU {
                         continue;
                     }
                     let data = self.mem[self.index as usize + i as usize];
-                    println!("DATA: {:#x?}", data);
                     let mut x = x_coord;
+                    // need to read bits from left to right
                     for z in (0..8).rev() {
                         if x > WIDTH {
                             break;
                         }
                         let curr = (data & (1 << (z))) != 0;
-                        println!("DATA: {:#x?}", data);
-                        println!("x: {} y: {} current: {}", x, y_coord, curr);
                         if curr && self.display[y_coord][x] {
-                            println!("fizz");
                             thread::sleep(std::time::Duration::from_millis(1000));
-                            println!("DATA: {:#x?}", data);
-                            println!("x: {} y: {} current: {}", x, y_coord, curr);
                             self.display[y_coord][x] = false;
                             self.registers[0xF as usize] = 1;
                         } else if curr && !self.display[y_coord][x] {
-                            println!("buzz");
                             self.display[y_coord][x] = true;
                         }
                         x += 1;
@@ -209,6 +303,50 @@ impl CPU {
                     y_coord += 1;
                 }
             }
+
+            0xE => match nn {
+                0x9E => {
+                    if self.keypad[x_val as usize] {
+                        self.pc += 2;
+                    }
+                }
+
+                0xA1 => {
+                    if !self.keypad[x_val as usize] {
+                        self.pc += 2;
+                    }
+                }
+
+                _ => unimplemented!(),
+            },
+
+            0xF => match nn {
+                0x07 => self.registers[x] = self.delay_timer,
+                0x15 => self.delay_timer = x_val,
+                0x18 => self.sound_timer = x_val,
+                0x1E => {
+                    self.index += x_val as u16;
+                    if self.index > 0x0FFF {
+                        self.registers[0xF] = 1;
+                    }
+                }
+                0x0A => {
+                    let mut pressed = false;
+                    for (i, k) in self.keypad.iter().enumerate() {
+                        if *k {
+                            self.registers[x] = i as u8;
+                            pressed = true;
+                        }
+                    }
+                    if !pressed {
+                        self.pc -= 2;
+                    }
+                }
+
+                0x29 => {}
+
+                _ => unimplemented!(),
+            },
 
             _ => todo!(),
         }

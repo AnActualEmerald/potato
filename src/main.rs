@@ -6,11 +6,11 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-const PROGRAM: &'static [u8; 132] = include_bytes!("IBM_Logo.ch8");
+// const PROGRAM: &'static [u8; 132] = include_bytes!("IBM_Logo.ch8");
 
 fn main() {
     env_logger::init();
-    let mut cpu = potato::init(PROGRAM);
+    let mut cpu = potato::init(include_bytes!("test_opcode.ch8"));
     let (window, events, mut px) = potato::display::init();
     let mut last = Instant::now();
     let mut timers = 0;
