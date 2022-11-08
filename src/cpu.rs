@@ -31,7 +31,7 @@ pub struct CPU {
     registers: [u8; 16],
     delay_timer: u8,
     sound_timer: u8,
-    display: [[bool; WIDTH]; HEIGHT],
+    display: Vec<Vec<bool>>,
 }
 
 #[derive(Debug)]
@@ -73,7 +73,7 @@ impl Display for CPU {
         write!(f, "]\n")?;
         // write!(f, "STACK: {:#?}", self.stack)?;
         write!(f, "DISPLAY-----\n")?;
-        for y in self.display {
+        for y in &self.display {
             for x in y {
                 write!(f, "{} ", x)?;
             }
@@ -95,6 +95,10 @@ impl Display for CPU {
 
 impl CPU {
     pub fn new() -> Self {
+        Self::with_size(WIDTH, HEIGHT)
+    }
+
+    pub fn with_size(width: usize, height: usize) -> Self {
         let mut mem = [0u8; 4096];
 
         //load font
@@ -110,7 +114,7 @@ impl CPU {
             registers: [0u8; 16],
             delay_timer: 0,
             sound_timer: 0,
-            display: [[false; WIDTH]; HEIGHT],
+            display: vec![vec![false; width]; height],
         }
     }
 
@@ -141,7 +145,13 @@ impl CPU {
         // println!("nnn: {:#X}", nnn);
 
         match nib {
-            _ if instr == 0x00E0 => self.display = [[false; WIDTH]; HEIGHT],
+            _ if instr == 0x00E0 => {
+                for y in &mut self.display {
+                    for x in y {
+                        *x = false;
+                    }
+                }
+            }
             _ if instr == 0x00EE => self.pc = self.stack.pop() as usize,
             1 => {
                 self.pc = nnn as usize;
@@ -178,7 +188,7 @@ impl CPU {
                     let mut x = x_coord;
                     for z in (0..8).rev() {
                         if x > WIDTH {
-                            // break;
+                            break;
                         }
                         let curr = (data & (1 << (z))) != 0;
                         println!("DATA: {:#x?}", data);
