@@ -2,6 +2,7 @@ mod cpu;
 pub mod display;
 
 pub use cpu::CPU;
+pub use cpu::DEFAULT_KEYPAD;
 pub use cpu::HEIGHT;
 pub use cpu::WIDTH;
 

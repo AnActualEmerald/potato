@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use potato;
+use potato::{self, DEFAULT_KEYPAD};
 use winit::{
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, WindowEvent},
     event_loop::ControlFlow,
 };
 
@@ -10,7 +10,7 @@ use winit::{
 
 fn main() {
     env_logger::init();
-    let mut cpu = potato::init(include_bytes!("test_opcode.ch8"));
+    let mut cpu = potato::init(include_bytes!("Airplane.ch8"));
     let (window, events, mut px) = potato::display::init();
     let mut last = Instant::now();
     let mut timers = 0;
@@ -22,17 +22,7 @@ fn main() {
         timers += delta.as_nanos();
         elapsed += delta.as_nanos();
 
-        if timers >= (1000000000 / 60) {
-            //TODO: Timers
-            timers = 0;
-        }
-
-        if elapsed >= (1000000000 / 100) {
-            cpu.tick();
-            window.request_redraw();
-            elapsed = 0;
-        }
-
+        window.request_redraw();
         match event {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => {
@@ -40,6 +30,18 @@ fn main() {
                 }
                 WindowEvent::Resized(size) => {
                     px.resize_surface(size.width, size.height);
+                }
+                WindowEvent::KeyboardInput {
+                    device_id: _,
+                    input,
+                    is_synthetic: _,
+                } => {
+                    if let Some(k) = DEFAULT_KEYPAD.get(&input.scancode) {
+                        cpu.keypad[*k] = match input.state {
+                            ElementState::Pressed => true,
+                            _ => false,
+                        }
+                    }
                 }
                 _ => {}
             },
@@ -53,6 +55,16 @@ fn main() {
                 }
             }
             _ => {}
+        }
+
+        if timers >= (0) {
+            cpu.timers();
+            timers = 0;
+        }
+
+        if elapsed >= (0) {
+            cpu.tick();
+            elapsed = 0;
         }
     });
 }

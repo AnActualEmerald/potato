@@ -1,4 +1,24 @@
-use std::{fmt::Display, thread};
+use phf::{phf_map, Map};
+use std::fmt::Display;
+
+pub const DEFAULT_KEYPAD: Map<u32, usize> = phf_map! {
+    2u32 => 0,
+    3u32 => 1,
+    4u32 => 2,
+    5u32 => 3,
+    16u32 => 4,
+    17u32 => 5,
+    18u32 => 6,
+    19u32 => 7,
+    30u32 => 8,
+    31u32 => 9,
+    32u32 => 0xA,
+    33u32 => 0xB,
+    44u32 => 0xC,
+    45u32 => 0xD,
+    46u32 => 0xE,
+    47u32 => 0xF
+};
 
 const FONT: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -18,6 +38,7 @@ const FONT: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80,
 ]; // F
+const FONT_START: u16 = 0x050;
 
 pub const WIDTH: usize = 64;
 pub const HEIGHT: usize = 32;
@@ -31,7 +52,7 @@ pub struct CPU {
     registers: [u8; 16],
     delay_timer: u8,
     sound_timer: u8,
-    keypad: [bool; 16],
+    pub keypad: [bool; 16],
     display: Vec<Vec<bool>>,
 }
 
@@ -280,19 +301,18 @@ impl CPU {
                 let mut y_coord = y_val as usize % HEIGHT;
                 self.registers[0xF as usize] = 0;
                 for i in 0..n {
-                    if y_coord > HEIGHT {
+                    if y_coord >= HEIGHT {
                         continue;
                     }
                     let data = self.mem[self.index as usize + i as usize];
                     let mut x = x_coord;
                     // need to read bits from left to right
                     for z in (0..8).rev() {
-                        if x > WIDTH {
+                        if x >= WIDTH {
                             break;
                         }
                         let curr = (data & (1 << (z))) != 0;
                         if curr && self.display[y_coord][x] {
-                            thread::sleep(std::time::Duration::from_millis(1000));
                             self.display[y_coord][x] = false;
                             self.registers[0xF as usize] = 1;
                         } else if curr && !self.display[y_coord][x] {
@@ -343,12 +363,38 @@ impl CPU {
                     }
                 }
 
-                0x29 => {}
+                0x29 => {
+                    let c = x_val & 0xF;
+                    self.index = FONT_START + c as u16;
+                }
 
-                _ => unimplemented!(),
+                0x33 => {
+                    let hundreds = x_val / 100;
+                    let tens = (x_val % 100) / 10;
+                    let ones = x_val % 10;
+                    self.mem[self.index as usize] = hundreds;
+                    self.mem[self.index as usize + 1] = tens;
+                    self.mem[self.index as usize + 2] = ones;
+                }
+
+                //TODO: original COSMAC behavior
+                0x55 => {
+                    for i in 0..=x {
+                        self.mem[self.index as usize + i] = self.registers[i];
+                    }
+                }
+
+                //TODO: original COSMAC behavior
+                0x65 => {
+                    for i in 0..=x {
+                        self.registers[i] = self.mem[self.index as usize + i];
+                    }
+                }
+
+                _ => eprintln!("Unknown instruction: {:#X}", instr),
             },
 
-            _ => todo!(),
+            c => eprintln!("opcode: {:#X}", c),
         }
     }
 
