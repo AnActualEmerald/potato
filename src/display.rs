@@ -6,7 +6,7 @@ use winit::{
 };
 
 const WIDTH: u32 = 600;
-const HEIGHT: u32 = 600;
+const HEIGHT: u32 = WIDTH / 2;
 
 pub fn init() -> (Window, EventLoop<()>, Pixels) {
     let event_loop = EventLoop::new();

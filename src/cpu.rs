@@ -143,7 +143,7 @@ impl CPU {
 
         //load font
         for i in 0..FONT.len() {
-            mem[i + 0x050] = FONT[i];
+            mem[i + FONT_START as usize] = FONT[i];
         }
 
         Self {
@@ -159,6 +159,7 @@ impl CPU {
         }
     }
 
+    /// Load a program into memory starting at address 0x200
     pub fn load_program(&mut self, program: &[u8]) {
         for (i, byte) in program.iter().enumerate() {
             self.mem[i + 0x200] = *byte;
@@ -167,6 +168,7 @@ impl CPU {
     }
 
     pub fn timers(&mut self) {
+        // decrement both counters, leaving them at 0
         self.sound_timer = self.sound_timer.checked_sub(1).unwrap_or_default();
         self.delay_timer = self.delay_timer.checked_sub(1).unwrap_or_default();
     }
@@ -175,13 +177,26 @@ impl CPU {
         let instr = ((self.mem[self.pc] as u16) << 8) | (self.mem[self.pc + 1] as u16);
         self.pc += 2;
 
+        // all the parts of the current instruction are decoded here to avoid code duplication
+        // though some parts are mutually exclusive, like Y and NN or NNN.
+        // NN is used later for further decoding of instructions like
+        // 0xFX** and 0xEX**
+
+        // first four bits of the instruction
         let nib = (instr & (0xF << 12)) >> 12;
+        // second four bits of the instruction used to refer to a cpu register
         let x = ((instr & (0xF << 8)) >> 8) as usize;
+        // third four bits of the instruction used to refer to another cpu register
         let y = ((instr & (0xF << 4)) >> 4) as usize;
+        // final four bits of the instruction, some 4-bit number
         let n = instr & (0xF);
+        // lower byte of the instruction, some 8-bit number
         let nn = (instr & (0xFF)) as u8;
+        // lower twelve bits of the instruction, some 12-bit address
         let nnn = instr & (0xFFF);
+        // the value of VX
         let x_val = self.registers[x];
+        // the value of VY
         let y_val = self.registers[y];
         // println!("nib: {:#X}", nib);
         // println!("x: {:#X}", x);
@@ -271,13 +286,14 @@ impl CPU {
                     self.registers[x] = res;
                 }
 
-                // set VX to VY - VX, and set VF if it doesn't underflow
+                // set VX to VY - VX, and set VF if it DOESN'T underflow
                 7 => {
                     let (res, carry) = y_val.overflowing_sub(x_val);
                     self.registers[0xF] = (!carry).into();
                     self.registers[x] = res;
                 }
 
+                // bitwise shift VX right 1
                 6 => {
                     //TODO: Optional set VX to VY before shifting
                     let (res, carry) = x_val.overflowing_shr(1);
@@ -285,6 +301,7 @@ impl CPU {
                     self.registers[x] = res;
                 }
 
+                // bitwise shift VX left 1
                 0xE => {
                     //TODO: Optional set VX to VY before shifting
                     let (res, carry) = x_val.overflowing_shl(1);
@@ -295,26 +312,32 @@ impl CPU {
                 _ => unimplemented!(),
             },
 
+            // skip if VX is not equal to VY
             9 => {
                 if x_val != y_val {
                     self.pc += 2;
                 }
             }
 
+            // set index register to nnn
             0xA => {
                 self.index = nnn;
             }
 
+            // jump program counter to nnn + V0
             0xB => {
                 //TODO: BXNN implementation
                 self.pc = (nnn + self.registers[0] as u16) as usize;
             }
 
+            // set VX to the result of nn AND a random number
             0xC => {
                 self.registers[x] = rand::random::<u8>() & nn;
             }
 
+            // draw a sprite to the display
             0xD => {
+                // X and Y registers are the top left corner coordinates
                 let x_coord = x_val as usize % WIDTH;
                 let mut y_coord = y_val as usize % HEIGHT;
                 self.registers[0xF] = 0;
@@ -322,14 +345,23 @@ impl CPU {
                     if y_coord >= HEIGHT {
                         continue;
                     }
+                    // index register points to where in memory the sprite data starts
+                    // the data will be read for as many lines as the draw command indicates
+                    // in the N nibble
                     let data = self.mem[self.index as usize + i as usize];
+                    // the left side of the sprite should always start from the same point
                     let mut x = x_coord;
                     // need to read bits from left to right
                     for z in (0..8).rev() {
                         if x >= WIDTH {
                             break;
                         }
+                        // each bit in each line of sprite data represents one pixel
                         let curr = (data & (1 << (z))) != 0;
+                        // if the pixel in 'on' in the sprite data, it will toggle the state
+                        // of the pixel in the display. If a pixel is turned off this way a
+                        // flag is set. I believe this is how collision detection is achieved
+                        // for most games.
                         if curr && self.display[y_coord][x] {
                             self.display[y_coord][x] = false;
                             self.registers[0xF] = 1;
@@ -345,12 +377,14 @@ impl CPU {
             }
 
             0xE => match nn {
+                // skip if the key at VX is pressed
                 0x9E => {
                     if self.keypad[x_val as usize] {
                         self.pc += 2;
                     }
                 }
 
+                // skip if the key at VX is NOT pressed
                 0xA1 => {
                     if !self.keypad[x_val as usize] {
                         self.pc += 2;
@@ -361,15 +395,21 @@ impl CPU {
             },
 
             0xF => match nn {
+                // set VX to the value of the delay timer
                 0x07 => self.registers[x] = self.delay_timer,
+                // set the delay timer to VX
                 0x15 => self.delay_timer = x_val,
+                // set the sound timer to VX
                 0x18 => self.sound_timer = x_val,
                 0x1E => {
+                    // add VX to the index register, setting the overflow flag if the result is greater than 0x0FFF,
+                    // which was the original addressable range of the COSMAC version of CHIP-8
                     self.index += x_val as u16;
                     if self.index > 0x0FFF {
                         self.registers[0xF] = 1;
                     }
                 }
+                // blocks until a key is pressed, then stores the hex value in VX
                 0x0A => {
                     let mut pressed = false;
                     for (i, k) in self.keypad.iter().enumerate() {
@@ -378,16 +418,20 @@ impl CPU {
                             pressed = true;
                         }
                     }
+                    // we decrement the program counter to rerun this instruction if no key was pressed
                     if !pressed {
                         self.pc -= 2;
                     }
                 }
 
+                // set the index register to the location of the sprite data for the font character given by VX
                 0x29 => {
                     let c = x_val;
                     self.index = FONT_START + c as u16;
                 }
 
+                // binary to decimal conversion on the number in VX, storing the hundreds, tens, and ones places
+                // consecutively in memory starting at the address in the index register
                 0x33 => {
                     let hundreds = x_val / 100;
                     let tens = (x_val % 100) / 10;
@@ -397,15 +441,17 @@ impl CPU {
                     self.mem[self.index as usize + 2] = ones;
                 }
 
-                //TODO: original COSMAC behavior
+                //TODO: original COSMAC behavior - modify the index such that it equals I + X + 1 after the instruction
                 0x55 => {
+                    // store the registers V0 to VX in memory consecutively, starting at the current index
                     for i in 0..=x {
                         self.mem[self.index as usize + i] = self.registers[i];
                     }
                 }
 
-                //TODO: original COSMAC behavior
+                //TODO: original COSMAC behavior - modify the index such that it equals I + X + 1 after the instruction
                 0x65 => {
+                    // load the registers V0 to VX into memory starting from the current index
                     for i in 0..=x {
                         self.registers[i] = self.mem[self.index as usize + i];
                     }

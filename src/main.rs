@@ -1,20 +1,37 @@
 use std::{
+    env::args,
+    process::exit,
     sync::{Arc, Mutex},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use potato::{self, DEFAULT_KEYPAD};
 use winit::{
-    event::{ElementState, Event, WindowEvent},
+    event::{ElementState, Event, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
 };
 
 // const PROGRAM: &'static [u8; 132] = include_bytes!("IBM_Logo.ch8");
 
 fn main() {
+    let args: Vec<String> = args().collect();
+    // println!("args: {:?}", args);
+
+    if args.len() != 2 {
+        eprintln!("Usage: potato <FILE>");
+        exit(1);
+    } else {
+        let path = &args[1];
+        if let Ok(prog) = std::fs::read(path) {
+            run(&prog);
+        }
+    }
+}
+
+fn run(prog: &[u8]) {
     env_logger::init();
-    let cpu = potato::init(include_bytes!("flightrunner.ch8"));
+    let cpu = potato::init(prog);
     let (window, events, mut px) = potato::display::init();
     let mut last = Instant::now();
     let mut timers = 0;
@@ -42,6 +59,9 @@ fn main() {
             }
             elapsed = 0;
         }
+
+        //Don't spin as fast as the CPU will let us
+        thread::sleep(Duration::from_nanos(1000));
     });
 
     events.run(move |event, _, flow| match event {
@@ -57,11 +77,18 @@ fn main() {
                 input,
                 is_synthetic: _,
             } => {
-                println!("input: {}", input.scancode);
+                // debug!("input: {}", input.scancode);
                 if let Some(k) = DEFAULT_KEYPAD.get(&input.scancode) {
                     cpu.lock().unwrap().keypad[*k] = match input.state {
                         ElementState::Pressed => true,
                         _ => false,
+                    }
+                } else {
+                    match input.virtual_keycode {
+                        Some(VirtualKeyCode::Escape) => {
+                            *flow = ControlFlow::Exit;
+                        }
+                        _ => {}
                     }
                 }
             }
