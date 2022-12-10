@@ -37,7 +37,7 @@ fn run(prog: &[u8]) {
     let mut timers = 0;
     let mut elapsed = 0;
 
-    let window = Arc::new(Mutex::new(window));
+    let window = Arc::new(window);
     let cpu = Arc::new(Mutex::new(cpu));
 
     let c1 = cpu.clone();
@@ -55,7 +55,7 @@ fn run(prog: &[u8]) {
 
         if elapsed >= (1_000_000_000 / 700) {
             if c1.lock().unwrap().tick() {
-                w1.lock().unwrap().request_redraw();
+                // w1.lock().unwrap().request_redraw();
             }
             elapsed = 0;
         }
@@ -64,42 +64,45 @@ fn run(prog: &[u8]) {
         thread::sleep(Duration::from_nanos(1000));
     });
 
-    events.run(move |event, _, flow| match event {
-        Event::WindowEvent { event, .. } => match event {
-            WindowEvent::CloseRequested => {
-                *flow = ControlFlow::Exit;
-            }
-            WindowEvent::Resized(size) => {
-                px.resize_surface(size.width, size.height);
-            }
-            WindowEvent::KeyboardInput {
-                device_id: _,
-                input,
-                is_synthetic: _,
-            } => {
-                // debug!("input: {}", input.scancode);
-                if let Some(k) = DEFAULT_KEYPAD.get(&input.scancode) {
-                    cpu.lock().unwrap().keypad[*k] = match input.state {
-                        ElementState::Pressed => true,
-                        _ => false,
-                    }
-                } else {
-                    match input.virtual_keycode {
-                        Some(VirtualKeyCode::Escape) => {
-                            *flow = ControlFlow::Exit;
+    events.run(move |event, _, flow| {
+        match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => {
+                    *flow = ControlFlow::Exit;
+                }
+                WindowEvent::Resized(size) => {
+                    px.resize_surface(size.width, size.height);
+                }
+                WindowEvent::KeyboardInput {
+                    device_id: _,
+                    input,
+                    is_synthetic: _,
+                } => {
+                    // debug!("input: {}", input.scancode);
+                    if let Some(k) = DEFAULT_KEYPAD.get(&input.scancode) {
+                        cpu.lock().unwrap().keypad[*k] = match input.state {
+                            ElementState::Pressed => true,
+                            _ => false,
                         }
-                        _ => {}
+                    } else {
+                        match input.virtual_keycode {
+                            Some(VirtualKeyCode::Escape) => {
+                                *flow = ControlFlow::Exit;
+                            }
+                            _ => {}
+                        }
                     }
+                }
+                _ => {}
+            },
+            Event::RedrawRequested(_) => {
+                cpu.lock().unwrap().draw(px.get_frame_mut());
+                if px.render().is_err() {
+                    *flow = ControlFlow::Exit;
                 }
             }
             _ => {}
-        },
-        Event::RedrawRequested(_) => {
-            cpu.lock().unwrap().draw(px.get_frame_mut());
-            if px.render().is_err() {
-                *flow = ControlFlow::Exit;
-            }
         }
-        _ => {}
+        window.request_redraw();
     });
 }
