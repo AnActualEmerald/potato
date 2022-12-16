@@ -1,6 +1,6 @@
 # Potato CHIP
 
-A minimal CHIP-8 VM
+A minimal CHIP-8 VM. An explanation of CHIP-8 and how it works can be found [here](./WRITE_UP.md).
 
 ### Installation
 
@@ -13,7 +13,7 @@ curl -o potato.tar.gz https://github.com/AnActualEmerald/potato/releases/downloa
 tar xzfv potato.tar.gz potato
 ```
 
-Optionally move the binary to a location in your PATH:
+Then, optionally move the binary to a location in your PATH:
 ```bash
 sudo mv potato/potato /usr/bin/potato
 ```
@@ -49,4 +49,5 @@ git clone https://github.com/AnActualEmerald/potato
 cd potato
 make test-all
 ```
+
 

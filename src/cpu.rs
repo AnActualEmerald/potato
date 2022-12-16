@@ -112,22 +112,14 @@ impl Display for CPU {
         }
         write!(f, "]\n")?;
         // write!(f, "STACK: {:#?}", self.stack)?;
-        write!(f, "DISPLAY-----\n")?;
-        for y in &self.display {
-            for x in y {
-                write!(f, "{} ", x)?;
-            }
-            write!(f, "\n")?;
-        }
-        write!(f, "DISPLAY-----\n")?;
-        write!(f, "MEMORY------\n")?;
-        for (i, e) in self.mem.iter().enumerate() {
-            write!(f, "{:#X} ", e)?;
-            if i % 8 == 0 {
-                writeln!(f)?;
-            }
-        }
-        write!(f, "\nMEMORY------")?;
+        // write!(f, "MEMORY------\n")?;
+        // for (i, e) in self.mem.iter().enumerate() {
+        //     write!(f, "{:#X} ", e)?;
+        //     if i % 8 == 0 {
+        //         writeln!(f)?;
+        //     }
+        // }
+        // write!(f, "\nMEMORY------")?;
 
         Ok(())
     }
@@ -206,6 +198,7 @@ impl CPU {
         // println!("nnn: {:#X}", nnn);
 
         match nib {
+            // clear the display
             _ if instr == 0x00E0 => {
                 for y in &mut self.display {
                     y.fill(false);
@@ -213,7 +206,9 @@ impl CPU {
 
                 return true;
             }
+            // jump to the address that was at the top of the stack
             _ if instr == 0x00EE => self.pc = self.stack.pop() as usize,
+            // jump to NNN
             1 => {
                 self.pc = nnn as usize;
             }
@@ -474,7 +469,7 @@ impl CPU {
             let rgba = if self.display[y][x] {
                 [0xF0, 0x90, 0xF0, 0xFF]
             } else {
-                [0x90, 0x50, 0x00, 0xFF]
+                [0x50, 0x50, 0x50, 0xFF]
             };
 
             pixel.copy_from_slice(&rgba);

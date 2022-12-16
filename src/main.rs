@@ -41,7 +41,7 @@ fn run(prog: &[u8]) {
     let cpu = Arc::new(Mutex::new(cpu));
 
     let c1 = cpu.clone();
-    let w1 = window.clone();
+    // let w1 = window.clone();
     thread::spawn(move || loop {
         let now = Instant::now();
         let delta = now.duration_since(last);
@@ -61,10 +61,11 @@ fn run(prog: &[u8]) {
         }
 
         //Don't spin as fast as the CPU will let us
-        thread::sleep(Duration::from_nanos(1000));
+        thread::sleep(Duration::from_nanos(500));
     });
 
     events.run(move |event, _, flow| {
+        window.request_redraw();
         match event {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => {
@@ -103,6 +104,5 @@ fn run(prog: &[u8]) {
             }
             _ => {}
         }
-        window.request_redraw();
     });
 }
